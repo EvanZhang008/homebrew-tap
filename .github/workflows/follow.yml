@@ -1,0 +1,49 @@
+name: Follow open-walnut releases
+
+# Formula/open-walnut.rb is a copy of the open-walnut.rb attached to the newest
+# release of EvanZhang008/open-walnut, where release-archives.yml writes it from
+# that release's archives, installs it with brew and runs `brew test`. This only
+# copies it, and never a release older than the one already here.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: follow
+  cancel-in-progress: false
+
+jobs:
+  follow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Copy the newest release's formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release download --repo EvanZhang008/open-walnut --pattern open-walnut.rb --dir "$RUNNER_TEMP" --clobber; then
+            echo "The newest open-walnut release has no formula yet: its archives are built in the minutes after it is out."
+            exit 0
+          fi
+          new="$RUNNER_TEMP/open-walnut.rb"
+          grep -q '^class OpenWalnut < Formula' "$new" || { echo "::error::open-walnut.rb is not the formula"; exit 1; }
+          ruby -c "$new"
+          version_of() { sed -n 's/^  version "\(.*\)"$/\1/p' "$1"; }
+          if cmp -s "$new" Formula/open-walnut.rb; then echo "Formula/open-walnut.rb is open-walnut $(version_of "$new")"; exit 0; fi
+          if [ -f Formula/open-walnut.rb ]; then
+            newest="$(printf '%s\n%s\n' "$(version_of Formula/open-walnut.rb)" "$(version_of "$new")" | sort -V | tail -n 1)"
+            if [ "$newest" != "$(version_of "$new")" ]; then echo "::error::the newest release's formula ($(version_of "$new")) is older than this tap's"; exit 1; fi
+          fi
+          mkdir -p Formula
+          cp "$new" Formula/open-walnut.rb
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/open-walnut.rb
+          git commit -m "open-walnut $(version_of "$new")"
+          git push
