@@ -1,9 +1,11 @@
 name: Follow open-walnut releases
 
-# Formula/open-walnut.rb is a copy of the open-walnut.rb attached to the newest
-# release of EvanZhang008/open-walnut, where release-archives.yml writes it from
-# that release's archives, installs it with brew and runs `brew test`. This only
-# copies it, and never a release older than the one already here.
+# Formula/open-walnut.rb and Casks/walnut.rb are copies of the open-walnut.rb and
+# walnut.rb attached to the newest release of EvanZhang008/open-walnut, where
+# release-archives.yml writes the formula from that release's archives and
+# mac-app.yml the cask from its notarized Walnut.dmg; each is installed with brew
+# there before it is attached. This only copies them, and never a release older
+# than the one already here.
 
 on:
   schedule:
@@ -23,27 +25,37 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
-      - name: Copy the newest release's formula
+      - name: Copy the newest release's formula and cask
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release download --repo EvanZhang008/open-walnut --pattern open-walnut.rb --dir "$RUNNER_TEMP" --clobber; then
-            echo "The newest open-walnut release has no formula yet: its archives are built in the minutes after it is out."
-            exit 0
-          fi
-          new="$RUNNER_TEMP/open-walnut.rb"
-          grep -q '^class OpenWalnut < Formula' "$new" || { echo "::error::open-walnut.rb is not the formula"; exit 1; }
-          ruby -c "$new"
           version_of() { sed -n 's/^  version "\(.*\)"$/\1/p' "$1"; }
-          if cmp -s "$new" Formula/open-walnut.rb; then echo "Formula/open-walnut.rb is open-walnut $(version_of "$new")"; exit 0; fi
-          if [ -f Formula/open-walnut.rb ]; then
-            newest="$(printf '%s\n%s\n' "$(version_of Formula/open-walnut.rb)" "$(version_of "$new")" | sort -V | tail -n 1)"
-            if [ "$newest" != "$(version_of "$new")" ]; then echo "::error::the newest release's formula ($(version_of "$new")) is older than this tap's"; exit 1; fi
-          fi
-          mkdir -p Formula
-          cp "$new" Formula/open-walnut.rb
+          changed=""
+          # follow FILE DEST HEADER: copy the newest release's FILE to DEST unless it is older.
+          follow() {
+            rm -f "$RUNNER_TEMP/$1"
+            if ! gh release download --repo EvanZhang008/open-walnut --pattern "$1" --dir "$RUNNER_TEMP" --clobber; then
+              echo "The newest open-walnut release has no $1 yet: it is built in the minutes after the release is out."
+              return 0
+            fi
+            new="$RUNNER_TEMP/$1"
+            grep -q "$3" "$new" || { echo "::error::$1 is not what it should be (no line matching $3)"; return 1; }
+            ruby -c "$new"
+            if cmp -s "$new" "$2"; then echo "$2 is $(version_of "$new")"; return 0; fi
+            if [ -f "$2" ]; then
+              newest="$(printf '%s\n%s\n' "$(version_of "$2")" "$(version_of "$new")" | sort -V | tail -n 1)"
+              if [ "$newest" != "$(version_of "$new")" ]; then echo "::error::the newest release's $1 ($(version_of "$new")) is older than this tap's"; return 1; fi
+            fi
+            mkdir -p "$(dirname "$2")"
+            cp "$new" "$2"
+            git add "$2"
+            changed="$changed $(basename "$2" .rb) $(version_of "$new"),"
+          }
+          follow open-walnut.rb Formula/open-walnut.rb '^class OpenWalnut < Formula'
+          follow walnut.rb Casks/walnut.rb '^cask "walnut" do'
+          [ -n "$changed" ] || exit 0
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Formula/open-walnut.rb
-          git commit -m "open-walnut $(version_of "$new")"
+          changed="${changed%,}"
+          git commit -m "${changed# }"
           git push
