@@ -3,8 +3,8 @@ cask "walnut" do
   arch arm: "arm64", intel: "x64"
 
   version "0.6.22"
-  sha256 arm:   "97f5d75d232bbf1eb56bb793067ee3b685dc40270af0d7724ebf7ab0861f8ff7",
-         intel: "0e624fb019a4df7a2f73196ee7ac5e10f15dbae99d827d125901b5f9fce60348"
+  sha256 arm:   "c35efde246aeecb083ee45707f4c37f926f100f4af476c0e485c2eec05dd42f8",
+         intel: "a1e15468479d1aefe8ae6919d728e787f39a2f169b9155bacefb1ecb75ecbb28"
 
   url "https://github.com/EvanZhang008/open-walnut/releases/download/v#{version}/Walnut-#{arch}.dmg"
   name "Walnut"
